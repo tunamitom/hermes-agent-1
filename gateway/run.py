@@ -1173,24 +1173,29 @@ def _load_gateway_config() -> dict:
     Uses the module-level ``_hermes_home`` (so tests that monkeypatch it
     still see their fixture) and shares the mtime-keyed raw-yaml cache
     from ``hermes_cli.config.read_raw_config`` when the paths match.
+
+    Unlike ``read_raw_config()``, this expands ``${ENV_VAR}`` references
+    in config values so the gateway can use resolved URLs for endpoint
+    probing and API calls.
     """
     config_path = _hermes_home / 'config.yaml'
     try:
-        from hermes_cli.config import get_config_path, read_raw_config
+        from hermes_cli.config import get_config_path, read_raw_config, _expand_env_vars
         # Fast path: if _hermes_home agrees with the canonical config
         # location, reuse the shared cache. Otherwise fall through to a
         # direct read (keeps test fixtures with a monkeypatched
         # _hermes_home working).
         if config_path == get_config_path():
-            return read_raw_config()
+            return _expand_env_vars(read_raw_config())
     except Exception:
         pass
 
     try:
         if config_path.exists():
             import yaml
+            from hermes_cli.config import _expand_env_vars
             with open(config_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
+                return _expand_env_vars(yaml.safe_load(f) or {})
     except Exception:
         logger.debug("Could not load gateway config from %s", config_path)
     return {}
@@ -2816,8 +2821,17 @@ class GatewayRunner:
             if cfg_path.exists():
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
+                if not isinstance(cfg, dict):
+                    return None
+                try:
+                    from hermes_cli.config import _expand_env_vars as _expand_cfg_env
+                    expanded_cfg = _expand_cfg_env(cfg)
+                    if isinstance(expanded_cfg, dict):
+                        cfg = expanded_cfg
+                except Exception:
+                    pass
                 fb = cfg.get("fallback_providers") or cfg.get("fallback_model") or None
-                if fb:
+                if isinstance(fb, (list, dict)):
                     return fb
         except Exception:
             pass

@@ -1189,6 +1189,26 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
                         ctx = m.get("max_model_len") or m.get("context_length") or m.get("max_tokens")
                         if ctx and isinstance(ctx, (int, float)):
                             return int(ctx)
+                        # llama.cpp: extract n_ctx_train or n_ctx from meta as fallback
+                        meta = m.get("meta", {})
+                        for key in ("n_ctx_train", "n_ctx"):
+                            v = meta.get(key)
+                            if v and isinstance(v, (int, float)):
+                                return int(v)
+
+            # llama.cpp: prefer /props for runtime n_ctx (the actual KV cache size),
+            # fall back to n_ctx_train from /v1/models meta (training max).
+            if server_type == "llamacpp":
+                try:
+                    for props_path in ("/v1/props", "/props"):
+                        resp = client.get(f"{server_url}{props_path}")
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            n_ctx = data.get("default_generation_settings", {}).get("n_ctx")
+                            if n_ctx and isinstance(n_ctx, (int, float)):
+                                return int(n_ctx)
+                except Exception:
+                    pass
     except Exception:
         pass
 
