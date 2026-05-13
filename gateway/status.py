@@ -130,6 +130,15 @@ def _read_process_cmdline(pid: int) -> Optional[str]:
     platforms without /proc, falls back to ``ps -p <pid> -o command=``.
     On Windows (no /proc, no ps), uses psutil.
     """
+    try:
+        import psutil  # type: ignore
+        parts = psutil.Process(int(pid)).cmdline()
+        if parts:
+            return " ".join(str(part) for part in parts).strip() or None
+    except Exception:
+        pass
+
+
     cmdline_path = Path(f"/proc/{pid}/cmdline")
     try:
         raw = cmdline_path.read_bytes()
@@ -630,6 +639,7 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
                 # record's own argv — the gateway writes it at startup and
                 # it's the only identity signal on platforms without ps.
                 # Both oracles must indicate "not a gateway" to mark stale.
+
                 if (
                     not stale
                     and existing.get("start_time") is None
