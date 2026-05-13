@@ -109,7 +109,13 @@ def _get_scope_lock_path(scope: str, identity: str) -> Path:
 
 
 def _get_process_start_time(pid: int) -> Optional[int]:
-    """Return the kernel start time for a process when available."""
+    """Return the process start time when available."""
+    try:
+        import psutil  # type: ignore
+        return int(psutil.Process(int(pid)).create_time() * 1000)
+    except Exception:
+        pass
+
     stat_path = Path(f"/proc/{pid}/stat")
     try:
         # Field 22 in /proc/<pid>/stat is process start time (clock ticks).
